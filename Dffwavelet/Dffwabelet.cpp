@@ -184,7 +184,7 @@ Mat WaveTransform::waveletDecompose(const Mat &_src, const Mat &_lowFilter, cons
 {
 	assert(_src.rows == 1 && _lowFilter.rows == 1 && _highFilter.rows == 1);
 	assert(_src.cols >= _lowFilter.cols && _src.cols >= _highFilter.cols);
-	Mat &src = Mat_<float>(_  src);
+	Mat &src = Mat_<float>(_src);
 
 	int D = src.cols;
 
@@ -259,75 +259,166 @@ Mat WaveTransform::waveletReconstruct(const Mat &_src, const Mat &_lowFilter, co
 }
 
 //小波融合规则
-Mat WaveTransform::WFR(const Mat srcArray[], const int _level)
+Mat WaveTransform::WFR(const Vector<Mat> srcVector, const int _level)
 {
-	int R = 1200;
-	int C = 1600;
-
-	int minRow = R/ std::pow(2., _level - 1);
-	int minCol = C / std::pow(2., _level - 1);
-
-	int row = 0, col = 0;
-
-	//低频融合
-	while (row<=minRow && col<=minCol)
+	/*if (srcVector.size==0)
 	{
-		for (size_t i = 0; i < length; i++)
+		return;
+	}*/
+	if (srcVector.size() >= 2)
+	{
+		int imgNum = srcVector.size();
+		int R = srcVector[0].rows;//图像矩阵行列数
+		int C = srcVector[0].cols;
+		int minRowArea = R / std::pow(2., _level);//小波变换后基础区域
+		int minColArea = C / std::pow(2., _level);
+
+		Mat Z = Mat::zeros(R, C, CV_8UC1); //全零矩阵
+
+		Mat src1 = srcVector[0];
+		Mat src2 = srcVector[1];
+		Mat src3 = srcVector[2];
+		Mat src4 = srcVector[3];
+		Mat src5 = srcVector[4];
+		//cvtColor(src1, src1, CV_RGB2GRAY);//把三通道转化为单通道灰度
+		//cvtColor(src2, src2, CV_RGB2GRAY);
+		//cvtColor(src3, src3, CV_RGB2GRAY);
+		//cvtColor(src4, src4, CV_RGB2GRAY);
+		//cvtColor(src5, src5, CV_RGB2GRAY);
+
+		Mat imgWave1 = WDT(src1, "haar", 3);//灰度图Harr小波尺度分解
+		Mat imgWave2 = WDT(src2, "haar", 3);
+		Mat imgWave3 = WDT(src3, "haar", 3);
+		Mat imgWave4 = WDT(src4, "haar", 3);
+		Mat imgWave5 = WDT(src5, "haar", 3);
+
+		int row = 0, col = 0;//行列索引值初始化
+		//融合代码
+
+		//低频融合
+		for (int i = row; i <= minRowArea; i++)
 		{
+			for (int j = col; j <= minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
 
 		}
-	}
+		//对角分量融合
+		row = minRowArea, col = minColArea;
+		for (int i = row; i <= 2 * minRowArea; i++)
+		{
+			for (int j = col; j <= 2 * minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
 
-	
-	//对角分量融合
-	row = minRow, col = minCol;
-	while (row <= 2*minRow && col <= 2*minCol)
+		}
+		row = 2*minRowArea, col = 2*minColArea;
+		for (int i = row; i <= 4 * minRowArea; i++)
+		{
+			for (int j = col; j <= 4 * minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+
+		}
+		row = 4 * minRowArea, col = 4 * minColArea;
+		for (int i = row; i <= R; i++)
+		{
+			for (int j = col; j <= C; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+		}
+
+
+		//行分量融合
+		row = 0, col = minColArea;
+		for (int i = row; i <= minRowArea; i++)
+		{
+			for (int j = col; j <= 2 * minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+
+		}
+		col = 2*minColArea;
+		for (int i = row; i <=2*minRowArea; i++)
+		{
+			for (int j = col; j <= 4* minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+
+		}
+		col = 4 * minColArea;
+		for (int i = row; i <= 4 * minRowArea; i++)
+		{
+			for (int j = col; j <= C; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+		}
+
+
+		//列分量融合
+		row = minRowArea, col = 0;
+		for (int i = row; i <= 2 * minRowArea; i++)
+		{
+			for (int j = col; j <= minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+		}
+		row = 2*minRowArea;
+		for(int i = row; i <= 4 * minRowArea; i++)
+		{
+			for (int j = col; j <= 2*minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+		}
+		row = 4 * minRowArea;
+		for (int i = row; i <= R; i++)
+		{
+			for (int j = col; j <= 4*minColArea; j++)
+			{
+				Z.at<uchar>(i, j) = maxFun(imgWave1, imgWave2, imgWave3, imgWave4, imgWave5, i, j);
+			}
+		}
+		return Z;
+	}
+	else
 	{
-
+		return srcVector[0];
 	}
-	while (row <= 4 * minRow && col <= 4 * minCol)
+}
+
+//区域最大值
+float WaveTransform::maxFun(const Mat src1, const Mat src2, const Mat src3, const Mat src4, const Mat src5, int row, int col)
+{
+	float tempValue = 0;
+	if (src1.at<uchar>(row,col) > tempValue)
 	{
-
+		tempValue = src1.at<uchar>(row, col);
 	}
-	while (row <= R && col <= C)
+	if (src2.at<uchar>(row, col) > tempValue)
 	{
-
+		tempValue = src2.at<uchar>(row, col);
 	}
-
-
-	//行分量融合
-	row = 0, col = minCol;
-	while (row <=  minRow && col <= 2*minCol)
+	if (src3.at<uchar>(row, col) > tempValue)
 	{
-
+		tempValue = src3.at<uchar>(row, col);
 	}
-	row = 0;
-	while (row <= 2 * minRow && col <= 4 * minCol)
+	if (src4.at<uchar>(row, col) > tempValue)
 	{
-
+		tempValue = src4.at<uchar>(row, col);
 	}
-	row = 0;
-	while (row <= 4 * minRow && col <= C)
+	if (src5.at<uchar>(row, col) > tempValue)
 	{
-
+		tempValue = src5.at<uchar>(row, col);
 	}
 
-
-	//列分量融合
-	row = minRow, col = 0;
-	while (row <= 2*minRow && col <= minCol)
-	{
-
-	}
-	col = 0;
-	while (row <= 4 * minRow && col <= 2 * minCol)
-	{
-
-	}
-	col = 0;
-	while (row <= R && col <= 4 * minCol)
-	{
-
-	}
-
+	return tempValue;
 }

@@ -23,7 +23,9 @@ public:
 
 	Mat waveletReconstruct(const Mat &_src, const Mat &_lowFilter, const Mat &_highFilter);
 
-	Mat WFR(const Mat srcArray[], const int _level);
+	Mat WFR(const Vector<Mat> srcVector, const int _level);
+
+	float maxFun(const Mat src1, const Mat src2, const Mat src3, const Mat src4, const Mat src5, int row,int col);
 
 
 
