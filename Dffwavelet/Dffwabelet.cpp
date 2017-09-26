@@ -12,7 +12,7 @@ Mat WaveTransform::WDT(const Mat &_src, const string _wname, const int _level)
 	//高通低通滤波器
 	Mat lowFilter;
 	Mat highFilter;
-	wavelet(_wname, lowFilter, highFilter);
+	wavelet(_wname,1, lowFilter, highFilter);
 	//小波变换
 	int t = 1;
 	int row = N;
@@ -68,11 +68,52 @@ Mat WaveTransform::WDT(const Mat &_src, const string _wname, const int _level)
 		col /= 2;
 		t++;
 		src = dst;
-
 	}
 	return dst;
 }
 
+//小波分解
+Mat WaveTransform::waveletDecompose(const Mat &_src, const Mat &_lowFilter, const Mat &_highFilter)
+{
+	assert(_src.rows == 1 && _lowFilter.rows == 1 && _highFilter.rows == 1);
+	assert(_src.cols >= _lowFilter.cols && _src.cols >= _highFilter.cols);
+	Mat &src = Mat_<float>(_src);
+
+	int D = src.cols;
+
+	Mat &lowFilter = Mat_<float>(_lowFilter);
+	Mat &highFilter = Mat_<float>(_highFilter);
+
+	//频域滤波或时域卷积；ifft( fft(x) * fft(filter)) = cov(x,filter) 
+	Mat dst1 = Mat::zeros(1, D, src.type());
+	Mat dst2 = Mat::zeros(1, D, src.type());
+
+	filter2D(src, dst1, -1, lowFilter);
+	filter2D(src, dst2, -1, highFilter);
+
+	//下采样
+	Mat downDst1 = Mat::zeros(1, D / 2, src.type());
+	Mat downDst2 = Mat::zeros(1, D / 2, src.type());
+
+	//改动地方
+	//resize(dst1, downDst1, downDst1.size());
+	//resize(dst2, downDst2, downDst2.size());
+
+	for (int i = 0, cnt = 1; i<D / 2; i++, cnt += 2)
+	{
+		downDst1.at<float>(0, i) = dst1.at<float>(0, cnt);
+		downDst2.at<float>(0, i) = dst2.at<float>(0, cnt);
+	}
+
+	//数据拼接
+	for (int i = 0; i<D / 2; i++)
+	{
+		src.at<float>(0, i) = downDst1.at<float>(0, i);
+		src.at<float>(0, i + D / 2) = downDst2.at<float>(0, i);
+
+	}
+	return src;
+}
 
 Mat WaveTransform::IWDT(const Mat &_src, const string _wname, const int _level)
 {
@@ -86,15 +127,16 @@ Mat WaveTransform::IWDT(const Mat &_src, const string _wname, const int _level)
 
 	Mat lowFilter;
 	Mat highFilter;
-	wavelet(_wname, lowFilter, highFilter);
+	wavelet(_wname,1, lowFilter, highFilter);
 
 	/// 小波变换
 	int t = 1;
-	int row = N / std::pow(2., _level - 1);
-	int col = D / std::pow(2., _level - 1);
+	int row = N / std::pow(2, _level-1);
+	int col = D / std::pow(2, _level-1);
 
 	while (row <= N && col <= D)
 	{
+		
 		/// 小波列逆变换
 		for (int j = 0; j<col; j++)
 		{
@@ -146,8 +188,76 @@ Mat WaveTransform::IWDT(const Mat &_src, const string _wname, const int _level)
 	return dst;
 }
 
+// 小波重建
+Mat WaveTransform::waveletReconstruct(const Mat &_src, const Mat &_lowFilter, const Mat &_highFilter)
+{
+	assert(_src.rows == 1 && _lowFilter.rows == 1 && _highFilter.rows == 1);
+	assert(_src.cols >= _lowFilter.cols && _src.cols >= _highFilter.cols);
+	Mat &src = Mat_<float>(_src);
+	int D = src.cols;
+	Mat &lowFilter = Mat_<float>(_lowFilter);
+	Mat &highFilter = Mat_<float>(_highFilter);
+
+	/// 插值;
+	Mat Up1 = Mat::zeros(1, D, src.type());
+	Mat Up2 = Mat::zeros(1, D, src.type());
+
+	/// 插值为0
+	for ( int i=0, cnt=1; i<D/2; i++,cnt+=2 )
+	{
+	    Up1.at<float>( 0, cnt ) = src.at<float>( 0, i );     ///< 前一半
+	    Up2.at<float>( 0, cnt ) = src.at<float>( 0, i+D/2 ); ///< 后一半
+	}
+
+	/// 双线性插值
+	//Mat Up11 = Mat::zeros(1, D/2, src.type());
+	//Mat Up22 = Mat::zeros(1, D/2, src.type());
+	//for (int i = 0; i<D / 2; i++)
+	//{
+	//	Up11.at<float>(0, i) = src.at<float>(0, i);     ///< 前一半
+	//	Up22.at<float>(0, i) = src.at<float>(0, i + D / 2); ///< 后一半
+	//resize(Up11, Up1, Up1.size());
+	//resize(Up22, Up2, Up2.size());
+
+	/// 立方插值
+	//Mat roi1(src, Rect(0, 0, D / 2, 1));//Rect(x,y,width,height) xy左上角坐标 矩形区域
+	//Mat roi2(src, Rect(D / 2, 0, D / 2, 1));
+	//resize(roi1, Up1, Up1.size(), 0, 0, INTER_CUBIC);
+	//resize(roi2, Up2, Up2.size(), 0, 0, INTER_CUBIC);
+
+	Mat dst1 = Mat::zeros(1, D, src.type());
+	Mat dst2 = Mat::zeros(1, D, src.type());
+	for (int i = 0; i <D; i++)
+	{
+		dst1.at<float>(0, i) = Up1.at<float>(0, D - 1 - i);
+		dst2.at<float>(0, i) = Up2.at<float>(0, D - 1 - i);
+
+	}
+
+
+	/// 前一半低通，后一半高通
+	Mat dst3 = Mat::zeros(1, D, src.type());
+	Mat dst4 = Mat::zeros(1, D, src.type());
+	Mat dst5 = Mat::zeros(1, D, src.type());
+	filter2D(dst1, dst3, -1, lowFilter);
+	filter2D(dst2, dst4, -1, highFilter);
+
+
+	for (int i = 0; i <D; i++)
+	{
+		dst1.at<float>(0, i) = dst3.at<float>(0, D - 1 - i);
+		dst2.at<float>(0, i) = dst4.at<float>(0, D - 1 - i);
+
+	}
+
+	/// 结果相加
+	dst5 = dst1 + dst2;
+
+	return dst5;
+}
+
 //生成不同类型的小波
-void WaveTransform::wavelet(const string _wname, Mat &_lowFilter, Mat &_highFilter)
+void WaveTransform::wavelet(const string _wname, const int flag, Mat &_lowFilter, Mat &_highFilter)
 {
 
 	if (_wname == "haar" || _wname == "db1")
@@ -156,11 +266,23 @@ void WaveTransform::wavelet(const string _wname, Mat &_lowFilter, Mat &_highFilt
 		_lowFilter = Mat::zeros(1, N, CV_32F);
 		_highFilter = Mat::zeros(1, N, CV_32F);
 
-		_lowFilter.at<float>(0, 0) = 1 / sqrtf(N);
-		_lowFilter.at<float>(0, 1) = 1 / sqrtf(N);
+		if (flag == 1)
+		{
+			_lowFilter.at<float>(0, 0) = 1 / sqrtf(N);
+			_lowFilter.at<float>(0, 1) = 1 / sqrtf(N);
 
-		_highFilter.at<float>(0, 0) = -1 / sqrtf(N);
-		_highFilter.at<float>(0, 1) = 1 / sqrtf(N);
+			_highFilter.at<float>(0, 0) = -1 / sqrtf(N);
+			_highFilter.at<float>(0, 1) = 1 / sqrtf(N);
+		}
+		if (flag == 2)
+		{
+			_lowFilter.at<float>(0, 0) = 1 / sqrtf(N);
+			_lowFilter.at<float>(0, 1) = 1 / sqrtf(N);
+
+			_highFilter.at<float>(0, 0) = 1 / sqrtf(N);
+			_highFilter.at<float>(0, 1) = -1 / sqrtf(N);
+		}
+
 	}
 	if (_wname == "sym2")
 	{
@@ -177,85 +299,6 @@ void WaveTransform::wavelet(const string _wname, Mat &_lowFilter, Mat &_highFilt
 			_highFilter.at<float>(0, i) = h[i];
 		}
 	}
-}
-
-//小波分解
-Mat WaveTransform::waveletDecompose(const Mat &_src, const Mat &_lowFilter, const Mat &_highFilter)
-{
-	assert(_src.rows == 1 && _lowFilter.rows == 1 && _highFilter.rows == 1);
-	assert(_src.cols >= _lowFilter.cols && _src.cols >= _highFilter.cols);
-	Mat &src = Mat_<float>(_src);
-
-	int D = src.cols;
-
-	Mat &lowFilter = Mat_<float>(_lowFilter);
-	Mat &highFilter = Mat_<float>(_highFilter);
-
-	//频域滤波或时域卷积；ifft( fft(x) * fft(filter)) = cov(x,filter) 
-	Mat dst1 = Mat::zeros(1, D, src.type());
-	Mat dst2 = Mat::zeros(1, D, src.type());
-
-	filter2D(src, dst1, -1, lowFilter);
-	filter2D(src, dst2, -1, highFilter);
-
-	//下采样
-	Mat downDst1 = Mat::zeros(1, D / 2, src.type());
-	Mat downDst2 = Mat::zeros(1, D / 2, src.type());
-
-	resize(dst1, downDst1, downDst1.size());
-	resize(dst2, downDst2, downDst2.size());
-
-	//数据拼接
-	for (int i = 0; i<D / 2; i++)
-	{
-		src.at<float>(0, i) = downDst1.at<float>(0, i);
-		src.at<float>(0, i + D / 2) = downDst2.at<float>(0, i);
-
-	}
-	return src;
-}
-
-// 小波重建
-Mat WaveTransform::waveletReconstruct(const Mat &_src, const Mat &_lowFilter, const Mat &_highFilter)
-{
-	assert(_src.rows == 1 && _lowFilter.rows == 1 && _highFilter.rows == 1);
-	assert(_src.cols >= _lowFilter.cols && _src.cols >= _highFilter.cols);
-	Mat &src = Mat_<float>(_src);
-	int D = src.cols;
-	Mat &lowFilter = Mat_<float>(_lowFilter);
-	Mat &highFilter = Mat_<float>(_highFilter);
-
-	/// 插值;
-	Mat Up1 = Mat::zeros(1, D, src.type());
-	Mat Up2 = Mat::zeros(1, D, src.type());
-
-	/// 插值为0
-
-	//for ( int i=0, cnt=1; i<D/2; i++,cnt+=2 )
-
-	//{
-
-	//    Up1.at<float>( 0, cnt ) = src.at<float>( 0, i );     ///< 前一半
-
-	//    Up2.at<float>( 0, cnt ) = src.at<float>( 0, i+D/2 ); ///< 后一半
-
-	//}
-
-	/// 线性插值
-	Mat roi1(src, Rect(0, 0, D / 2, 1));//Rect(x,y,width,height) xy左上角坐标 矩形区域
-	Mat roi2(src, Rect(D / 2, 0, D / 2, 1));
-	resize(roi1, Up1, Up1.size(), 0, 0, INTER_CUBIC);
-	resize(roi2, Up2, Up2.size(), 0, 0, INTER_CUBIC);
-
-	/// 前一半低通，后一半高通
-	Mat dst1 = Mat::zeros(1, D, src.type());
-	Mat dst2 = Mat::zeros(1, D, src.type());
-	filter2D(Up1, dst1, -1, lowFilter);
-	filter2D(Up2, dst2, -1, highFilter);
-
-	/// 结果相加
-	dst1 = dst1 + dst2;
-	return dst1;
 }
 
 //小波融合规则

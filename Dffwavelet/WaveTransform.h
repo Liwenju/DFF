@@ -17,7 +17,7 @@ public:
 
 	Mat IWDT(const Mat &_src, const string _wname, const int _level);
 
-	void wavelet(const string _wname, Mat &_lowFilter, Mat &_highFilter);
+	void wavelet(const string _wname,const int flag, Mat &_lowFilter, Mat &_highFilter);
 
 	Mat waveletDecompose(const Mat &_src, const Mat &_lowFilter, const Mat &_highFilter);
 
@@ -26,7 +26,6 @@ public:
 	Mat WFR(const Vector<Mat> srcVector, const int _level);
 
 	float maxFun(const Mat src1, const Mat src2, const Mat src3, const Mat src4, const Mat src5, int row,int col);
-
 
 
 private:
